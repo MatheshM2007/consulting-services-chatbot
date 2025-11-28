@@ -1,0 +1,36 @@
+{
+  "salesiq": {
+    "clientId": "${ZOHO_CLIENT_ID}",
+    "clientSecret": "${ZOHO_CLIENT_SECRET}",
+    "organizationId": "${ZOHO_ORG_ID}",
+    "baseUrl": "https://api.salesiq.zoho.com/v2",
+    "webhookSecret": "${ZOHO_WEBHOOK_SECRET}",
+    "webhookUrl": "${WEBHOOK_URL}/webhook/salesiq",
+    "redirectUrl": "${REDIRECT_URL}/auth/zoho/callback"
+  },
+  "features": {
+    "enableRealTimeChat": true,
+    "enableVisitorTracking": true,
+    "enableChatHistory": true,
+    "enableAnalytics": true,
+    "enableChatRating": true
+  },
+  "departments": [
+    {
+      "id": "sales",
+      "name": "Sales",
+      "enabled": true
+    },
+    {
+      "id": "support",
+      "name": "Support",
+      "enabled": true
+    }
+  ],
+  "database": {
+    "mongoDbUri": "${MONGODB_URI}",
+    "chatCollection": "chats",
+    "visitorCollection": "visitors",
+    "analyticsCollection": "analytics"
+  }
+}

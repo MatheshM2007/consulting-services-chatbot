@@ -1,0 +1,175 @@
+// Zoho Deluge Script for Consulting Services Chatbot
+// Handles appointment booking, verification, and integration with MongoDB backend
+// Version: 1.0
+// Author: Mathesh M
+
+/**
+ * Main webhook handler for appointment booking requests
+ * Receives visitor information and creates appointments
+ */
+response = Map();
+
+// Extract incoming data from request
+incoming_data = input.get("data");
+visitor_email = incoming_data.get("email");
+visitor_name = incoming_data.get("name");
+visitor_phone = incoming_data.get("phone");
+visitor_service = incoming_data.get("service");
+preferred_date = incoming_data.get("preferred_date");
+preferred_time = incoming_data.get("preferred_time");
+
+// Validation function
+function validate_appointment_data(email, name, phone, service, date, time) {
+  validation_result = Map();
+  validation_result.put("valid", true);
+  validation_result.put("errors", List());
+  
+  // Email validation
+  if (!email.contains("@") || email.isEmpty()) {
+    validation_result.put("valid", false);
+    validation_result.get("errors").add("Invalid email address");
+  }
+  
+  // Name validation
+  if (name.isEmpty() || name.length() < 2) {
+    validation_result.put("valid", false);
+    validation_result.get("errors").add("Name must be at least 2 characters");
+  }
+  
+  // Phone validation (basic)
+  if (phone.isEmpty() || phone.length() < 10) {
+    validation_result.put("valid", false);
+    validation_result.get("errors").add("Invalid phone number");
+  }
+  
+  // Service validation
+  if (service.isEmpty()) {
+    validation_result.put("valid", false);
+    validation_result.get("errors").add("Service selection required");
+  }
+  
+  // Date/Time validation
+  if (date.isEmpty() || time.isEmpty()) {
+    validation_result.put("valid", false);
+    validation_result.get("errors").add("Date and time are required");
+  }
+  
+  return validation_result;
+}
+
+// OTP Generation function
+function generate_otp() {
+  otp = "";
+  for (i = 0; i < 6; i++) {
+    otp = otp + randomNumber(0, 9);
+  }
+  return otp;
+}
+
+// Send OTP via SMS
+function send_otp_sms(phone_number, otp_code) {
+  // Implementation using Twilio API
+  twilio_auth = Map();
+  twilio_auth.put("account_sid", system.getProperty("TWILIO_ACCOUNT_SID"));
+  twilio_auth.put("auth_token", system.getProperty("TWILIO_AUTH_TOKEN"));
+  
+  sms_body = "Your OTP for appointment verification is: " + otp_code + ". Valid for 10 minutes.";
+  
+  // Send SMS (pseudo-code - actual implementation requires Twilio SDK)
+  sms_response = http.post("https://api.twilio.com/send", sms_body, twilio_auth);
+  return sms_response;
+}
+
+// Send confirmation email
+function send_confirmation_email(email, name, date, time, service) {
+  sendmail = Map();
+  sendmail.put("from", system.getProperty("EMAIL_FROM"));
+  sendmail.put("to", email);
+  sendmail.put("subject", "Appointment Confirmation - Consulting Services");
+  
+  email_body = "Dear " + name + ",\n\n";
+  email_body = email_body + "Your appointment has been confirmed!\n";
+  email_body = email_body + "Service: " + service + "\n";
+  email_body = email_body + "Date: " + date + "\n";
+  email_body = email_body + "Time: " + time + "\n";
+  email_body = email_body + "\nThank you for choosing our services.\n";
+  email_body = email_body + "Regards,\nCosulting Services Team";
+  
+  sendmail.put("message", email_body);
+  // Send email using SendGrid or similar service
+  return sendmail;
+}
+
+// Check availability
+function check_availability(date, time, service) {
+  availability = Map();
+  availability.put("available", true);
+  
+  // Query MongoDB backend for existing appointments
+  query_params = Map();
+  query_params.put("date", date);
+  query_params.put("time", time);
+  query_params.put("service", service);
+  
+  backend_response = http.get(system.getProperty("BACKEND_API_URL") + "/api/appointments/check-availability", query_params);
+  
+  if (backend_response.get("status") == "booked") {
+    availability.put("available", false);
+  }
+  
+  return availability;
+}
+
+// Main booking logic
+validation = validate_appointment_data(visitor_email, visitor_name, visitor_phone, visitor_service, preferred_date, preferred_time);
+
+if (validation.get("valid")) {
+  // Check availability
+  availability_check = check_availability(preferred_date, preferred_time, visitor_service);
+  
+  if (availability_check.get("available")) {
+    // Generate OTP
+    otp = generate_otp();
+    
+    // Send OTP
+    otp_result = send_otp_sms(visitor_phone, otp);
+    
+    if (otp_result.get("status") == "sent") {
+      // Create appointment in MongoDB
+      appointment_data = Map();
+      appointment_data.put("name", visitor_name);
+      appointment_data.put("email", visitor_email);
+      appointment_data.put("phone", visitor_phone);
+      appointment_data.put("service", visitor_service);
+      appointment_data.put("date", preferred_date);
+      appointment_data.put("time", preferred_time);
+      appointment_data.put("otp_sent", true);
+      appointment_data.put("status", "pending_verification");
+      appointment_data.put("created_at", now);
+      
+      // POST to backend
+      backend_result = http.post(system.getProperty("BACKEND_API_URL") + "/api/appointments/create", appointment_data);
+      
+      if (backend_result.get("status") == "created") {
+        response.put("success", true);
+        response.put("message", "OTP sent successfully. Please verify to complete booking.");
+        response.put("appointment_id", backend_result.get("id"));
+      } else {
+        response.put("success", false);
+        response.put("message", "Error creating appointment. Please try again.");
+      }
+    } else {
+      response.put("success", false);
+      response.put("message", "Failed to send OTP. Please check phone number.");
+    }
+  } else {
+    response.put("success", false);
+    response.put("message", "Selected slot is not available. Please choose another time.");
+  }
+} else {
+  response.put("success", false);
+  response.put("errors", validation.get("errors"));
+}
+
+// Return response
+return response;
